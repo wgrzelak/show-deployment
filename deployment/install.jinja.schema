@@ -1,0 +1,6 @@
+imports:
+- path: helpers-common.jinja
+
+outputs:
+  ip:
+    type: string

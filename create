@@ -1,0 +1,8 @@
+#!/bin/bash
+
+set -x
+
+ts=$(date +%s)
+DIR=$(dirname $0)
+
+gcloud deployment-manager deployments create show-deployment-$ts --config=$DIR/deployment/config.yaml

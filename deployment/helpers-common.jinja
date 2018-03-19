@@ -1,0 +1,3 @@
+{%- macro GenerateUniqueName(prefix='', deployment='', suffix='') -%}
+  {{ prefix + "-" + deployment + "-" + suffix }}
+{%- endmacro %}

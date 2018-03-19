@@ -1,0 +1,90 @@
+{% import 'helpers-common.jinja' as common %}
+
+{% set vmname = common.GenerateUniqueName( 'vm', env['deployment'], env['name'] ) %}
+
+{% set waiterName = env['deployment'] + '-startup-waiter' %}
+{% set configName = env['deployment'] + '-startup-config' %}
+
+resources:
+
+{# FIREWALL #}
+- name: {{ common.GenerateUniqueName( 'fw-rule', env['deployment'], env['name'] ) }}
+  type: compute.v1.firewall
+  properties:
+    network: global/networks/default
+    sourceRanges:
+      - 0.0.0.0/0
+    allowed:
+    - IPProtocol: TCP
+      ports:
+      - 22
+      - 80
+{# FIREWALL #}
+
+{# VM #}
+- name: {{ vmname }}
+  type: compute.v1.instance
+  properties:
+    zone: {{ properties['zone'] }}
+    machineType: https://www.googleapis.com/compute/v1/projects/{{ env['project'] }}/zones/{{ properties['zone'] }}/machineTypes/{{ properties['machineType'] }}
+    disks:
+    - deviceName: boot
+      type: PERSISTENT
+      boot: true
+      autoDelete: true
+      initializeParams:
+        diskName: {{ common.GenerateUniqueName( 'disk', env['deployment'], env['name'] ) }}
+        sourceImage: https://www.googleapis.com/compute/v1/projects/debian-cloud/global/images/family/debian-9
+    networkInterfaces:
+    - network: global/networks/default
+      accessConfigs:
+        - name: External NAT
+          type: ONE_TO_ONE_NAT
+    serviceAccounts:
+    - email: default
+      scopes:
+        - https://www.googleapis.com/auth/cloudruntimeconfig
+    metadata:
+      items:
+        - key: startup-script
+          value: |
+            #!/bin/bash
+            apt-get update
+            apt-get install -y apache2
+            cat <<EOF > /var/www/html/index.html
+            <html><body><h1>Hello World</h1>
+            <p>This page was created from a simple startup script!</p>
+            </body></html>
+            EOF
+
+            gcloud beta runtime-config configs variables set success/success true --config-name {{ configName }}
+{# VM #}
+
+{# RUNTIME CONFIGURATION #}
+- name: {{ configName }}
+  type: runtimeconfig.v1beta1.config
+  properties:
+    config: {{ configName }}
+
+- name: {{ waiterName }}
+  type: runtimeconfig.v1beta1.waiter
+  metadata:
+    dependsOn:
+    - {{ vmname }}
+  properties:
+    parent: $(ref.{{ configName }}.name)
+    waiter: {{ waiterName }}
+    timeout: 300s
+    success:
+      cardinality:
+        path: /success
+        number: 1
+    failure:
+      cardinality:
+        path: /failure
+        number: 1
+{# RUNTIME CONFIGURATION #}
+
+outputs:
+- name: ip
+  value: $(ref.{{ vmname }}.networkInterfaces[0].accessConfigs[0].natIP)
